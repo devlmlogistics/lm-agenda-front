@@ -1,0 +1,9 @@
+{
+  "name": "LM Driver Agenda",
+  "short_name": "LM Agenda",
+  "start_url": "/#/agenda",
+  "display": "standalone",
+  "background_color": "#f7f6f1",
+  "theme_color": "#12372a",
+  "icons": []
+}
