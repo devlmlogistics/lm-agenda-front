@@ -1043,6 +1043,7 @@ function DashboardPage() {
       window.sessionStorage.setItem("lm-dashboard-key", keyFromUrl);
       window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#/dashboard`);
     }
+    if (!key) setError("This dashboard link is not valid.");
     setAccessKey(key);
   }, []);
 
@@ -1096,6 +1097,13 @@ function DashboardPage() {
           </div>
         </div>
       </header>
+      {!accessKey ? (
+        <main className="mx-auto max-w-xl px-4 py-12 sm:py-20">
+          <div className="rounded-3xl border border-rose-200 bg-rose-50 px-6 py-8 text-center font-semibold text-rose-800 shadow-sm">
+            {error || "This dashboard link is not valid."}
+          </div>
+        </main>
+      ) : (
       <main className="mx-auto max-w-[1800px] px-3 py-5 sm:px-8 sm:py-8">
         <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div><p className="text-xs font-black uppercase tracking-[0.2em] text-emerald-700">Live operations</p><h1 className="mt-1 text-2xl font-black sm:text-3xl">{dashboardDateLabel(selectedDate)}</h1></div>
@@ -1130,6 +1138,7 @@ function DashboardPage() {
         </div>
         <p className="mt-4 text-xs font-semibold text-stone-500">Rows highlighted in amber changed during the last 15 minutes. The dashboard refreshes automatically every minute.</p>
       </main>
+      )}
     </div>
   );
 }
