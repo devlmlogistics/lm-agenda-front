@@ -1006,6 +1006,134 @@ function SupervisorPage() {
   );
 }
 
+function dashboardDateLabel(value) {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Los_Angeles",
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(`${value}T12:00:00`));
+}
+
+function DashboardStatus({ status }) {
+  const state = status?.state || "pending";
+  const colors = {
+    completed: "border-emerald-200 bg-emerald-100 text-emerald-800",
+    error: "border-rose-200 bg-rose-100 text-rose-800",
+    pending: "border-stone-200 bg-stone-100 text-stone-500",
+  };
+  return <span title={status?.completed_at || state} className={`inline-flex h-8 min-w-16 items-center justify-center rounded-lg border px-2 text-xs font-bold uppercase ${colors[state]}`}>{state === "completed" ? "Done" : state === "error" ? "Error" : "—"}</span>;
+}
+
+function DashboardPage() {
+  const [accessKey, setAccessKey] = useState("");
+  const [selectedDate, setSelectedDate] = useState(californiaToday());
+  const [tasks, setTasks] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [lastRefresh, setLastRefresh] = useState(null);
+
+  useEffect(() => {
+    const query = window.location.hash.split("?")[1] || "";
+    const keyFromUrl = new URLSearchParams(query).get("key")?.trim();
+    const storedKey = window.sessionStorage.getItem("lm-dashboard-key") || "";
+    const key = keyFromUrl || storedKey;
+    if (keyFromUrl) {
+      window.sessionStorage.setItem("lm-dashboard-key", keyFromUrl);
+      window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#/dashboard`);
+    }
+    setAccessKey(key);
+  }, []);
+
+  async function loadDashboard() {
+    if (!accessKey) {
+      setError("This dashboard link is not valid.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({ date: selectedDate });
+      const response = await fetch(`${API_BASE_URL}/dashboard/transportes?${params}`, {
+        headers: { "X-Dashboard-Key": accessKey },
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        if (response.status === 401) window.sessionStorage.removeItem("lm-dashboard-key");
+        throw new Error(data.message || "Unable to load dashboard data.");
+      }
+      setTasks(data.tasks || []);
+      setLastRefresh(new Date());
+      setError("");
+    } catch (requestError) {
+      setError(requestError.message || "Unable to load dashboard data.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!accessKey) return undefined;
+    loadDashboard();
+    const timer = window.setInterval(loadDashboard, 60000);
+    return () => window.clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accessKey, selectedDate]);
+
+  return (
+    <div className="min-h-screen bg-[#f7f6f1] text-stone-900">
+      <header className="bg-[#12372a] px-4 py-5 text-white shadow-lg sm:px-8">
+        <div className="mx-auto flex max-w-[1800px] flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-center gap-3">
+            <span className="grid h-11 w-11 place-items-center rounded-xl bg-amber-300 font-black text-[#12372a]">LM</span>
+            <div><p className="text-lg font-black tracking-wide">LM Logistics</p><p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-100/75">Transport dashboard</p></div>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+            <label className="text-xs font-bold uppercase tracking-wider text-emerald-100">Dashboard date
+              <input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} className="mt-1 block h-11 rounded-xl border border-white/20 bg-white px-3 text-base font-bold text-stone-900" />
+            </label>
+            <button type="button" onClick={loadDashboard} disabled={loading} className="h-11 rounded-xl bg-amber-300 px-5 font-bold text-[#12372a] disabled:opacity-60">{loading ? "Refreshing..." : "Refresh"}</button>
+          </div>
+        </div>
+      </header>
+      <main className="mx-auto max-w-[1800px] px-3 py-5 sm:px-8 sm:py-8">
+        <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div><p className="text-xs font-black uppercase tracking-[0.2em] text-emerald-700">Live operations</p><h1 className="mt-1 text-2xl font-black sm:text-3xl">{dashboardDateLabel(selectedDate)}</h1></div>
+          <p className="text-sm font-semibold text-stone-500">{tasks.length} transport{tasks.length === 1 ? "" : "s"}{lastRefresh ? ` · Updated ${lastRefresh.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : ""}</p>
+        </div>
+        {error && <div className="mb-5 rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 font-semibold text-rose-800">{error}</div>}
+        <div className="overflow-x-auto rounded-3xl border border-stone-200 bg-white shadow-[0_10px_35px_rgba(28,25,23,0.08)]">
+          <table className="min-w-[1500px] w-full border-collapse text-left text-sm">
+            <thead className="bg-stone-100 text-xs uppercase tracking-wider text-stone-600">
+              <tr>{["Order", "Driver", "Type", "Pickup empty", "Pick up", "Drop off", "Return empty", "GPS", "ETA", "GPS update", "City / ZIP", "Speed", "Remaining", "Errors"].map((label) => <th key={label} className="whitespace-nowrap border-b border-stone-200 px-4 py-4 font-black">{label}</th>)}</tr>
+            </thead>
+            <tbody className="divide-y divide-stone-100">
+              {tasks.map((task) => <tr key={`${task.delivery_order}-${task.id_transaction}`} className={task.changed_recently ? "bg-amber-50" : "hover:bg-stone-50"}>
+                <td className="whitespace-nowrap px-4 py-4"><p className="font-black">{task.delivery_order}</p><p className="text-xs text-stone-500">{task.event_time || "—"}</p></td>
+                <td className="whitespace-nowrap px-4 py-4 font-bold">{task.driver}</td>
+                <td className="whitespace-nowrap px-4 py-4"><span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-800">{task.movement_type}</span></td>
+                <td className="px-4 py-4"><DashboardStatus status={task.stages?.pickup_empty} /></td>
+                <td className="px-4 py-4"><div className="flex gap-1"><DashboardStatus status={task.stages?.pickup_checkin} /><DashboardStatus status={task.stages?.pickup_checkout} /></div></td>
+                <td className="px-4 py-4"><div className="flex gap-1"><DashboardStatus status={task.stages?.dropoff_checkin} /><DashboardStatus status={task.stages?.dropoff_checkout} /></div></td>
+                <td className="px-4 py-4"><DashboardStatus status={task.stages?.return_empty} /></td>
+                <td className="px-4 py-4"><span className={`inline-flex h-8 min-w-16 items-center justify-center rounded-lg px-2 text-xs font-black uppercase ${task.errors?.gps ? "bg-rose-100 text-rose-800" : task.gps?.active ? "bg-emerald-100 text-emerald-800" : "bg-stone-100 text-stone-500"}`}>{task.errors?.gps ? "Error" : task.gps?.active ? "Active" : "—"}</span></td>
+                <td className="whitespace-nowrap px-4 py-4 font-semibold">{task.gps?.eta ? formatMessageTime(task.gps.eta) : "—"}</td>
+                <td className="whitespace-nowrap px-4 py-4 font-semibold">{task.gps?.date_time ? formatMessageTime(task.gps.date_time) : "—"}</td>
+                <td className="whitespace-nowrap px-4 py-4">{task.gps?.city || "—"}{task.gps?.postal_code ? ` / ${task.gps.postal_code}` : ""}</td>
+                <td className="whitespace-nowrap px-4 py-4">{task.gps?.speed_mph == null ? "—" : `${task.gps.speed_mph} mph`}</td>
+                <td className="whitespace-nowrap px-4 py-4">{task.gps?.remaining_distance_mi == null ? "—" : `${task.gps.remaining_distance_mi} mi`}</td>
+                <td className="px-4 py-4"><div className="flex gap-1"><span className={`rounded-lg px-2 py-1 text-xs font-black ${task.errors?.e2open ? "bg-rose-100 text-rose-800" : "text-stone-300"}`}>E2O</span><span className={`rounded-lg px-2 py-1 text-xs font-black ${task.errors?.gps ? "bg-rose-100 text-rose-800" : "text-stone-300"}`}>GPS</span></div></td>
+              </tr>)}
+            </tbody>
+          </table>
+          {!loading && tasks.length === 0 && <p className="px-6 py-14 text-center font-semibold text-stone-500">No transports match this date.</p>}
+        </div>
+        <p className="mt-4 text-xs font-semibold text-stone-500">Rows highlighted in amber changed during the last 15 minutes. The dashboard refreshes automatically every minute.</p>
+      </main>
+    </div>
+  );
+}
+
 function Brand({ supervisor = false }) {
   return (
     <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -1047,6 +1175,7 @@ export default function App() {
   }, []);
 
   const routePath = route.split("?")[0];
+  if (routePath === "#/dashboard") return <DashboardPage />;
   if (routePath === "#/supervisor") return <SupervisorPage />;
   return routePath === "#/next-form" ? <NextFormPage /> : <AgendaPage />;
 }
