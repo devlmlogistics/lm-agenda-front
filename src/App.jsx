@@ -809,7 +809,9 @@ function SupervisorPage() {
 
   useEffect(() => {
     const query = window.location.hash.split("?")[1] || "";
-    const keyFromUrl = new URLSearchParams(query).get("key")?.trim();
+    // Read the fragment manually so a raw '+' in a base64 key is not converted to a space.
+    const rawKey = query.match(/(?:^|&)key=([^&]*)/)?.[1] || "";
+    const keyFromUrl = rawKey ? decodeURIComponent(rawKey).trim() : "";
     const storedKey = window.sessionStorage.getItem("lm-supervisor-key") || "";
     const key = keyFromUrl || storedKey;
     if (keyFromUrl) {
